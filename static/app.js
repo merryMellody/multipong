@@ -1,7 +1,5 @@
-// eslint-disable-next-line no-var
+// eslint-disable-next-line no-undef, no-var
 var socket = io();
-
-let numPlayers = 0;
 
 const canvas = document.getElementById('myCanvas');
 const ctx = canvas.getContext('2d');
