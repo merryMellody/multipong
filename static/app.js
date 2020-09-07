@@ -1,11 +1,16 @@
+// eslint-disable-next-line no-var
+var socket = io();
+
+let numPlayers = 0;
+
 const canvas = document.getElementById('myCanvas');
 const ctx = canvas.getContext('2d');
 
 const canvasWidth = 640;
 const canvasHeight = 480;
 
-canvas.style.width = canvasWidth + "px";
-canvas.style.height = canvasHeight + "px";
+canvas.style.width = `${canvasWidth}px`;
+canvas.style.height = `${canvasHeight}px`;
 
 const scale = window.devicePixelRatio;
 canvas.width = Math.floor(canvasWidth * scale);
@@ -81,6 +86,24 @@ function drawScore() {
   ctx.fillText(score2, canvasWidth / 2 + 36, 80);
 }
 
+function collisionHandler() {
+  if (
+    x + dx < ballRadius + paddleHeight
+    && y <= paddleY + paddleWidth
+    && y >= paddleY
+  ) {
+    dx = -dx;
+  }
+
+  if (
+    x + dx > canvasWidth - ballRadius - paddleHeight
+    && y <= paddle2Y + paddleWidth
+    && y >= paddle2Y
+  ) {
+    dx = -dx;
+  }
+}
+
 function draw() {
   ctx.clearRect(0, 0, canvasWidth, canvasHeight);
   drawLine();
@@ -92,7 +115,7 @@ function draw() {
 
   if (x + dx > canvasWidth - ballRadius) {
     dx = -dx;
-    score1 += 1;
+    socket.emit('setScore', { p1: score1 + 1, p2: score2 });
 
     x = canvasWidth / 2;
     y = canvasHeight - 30;
@@ -100,12 +123,12 @@ function draw() {
     dx = INITIAL_SPEED;
     dy = -INITIAL_SPEED;
 
-    paddleY = (canvasHeight - paddleWidth) / 2;
-    paddle2Y = (canvasHeight - paddleWidth) / 2;
+    socket.emit('moveP1', (canvasHeight - paddleWidth) / 2);
+    socket.emit('moveP2', (canvasHeight - paddleWidth) / 2);
   }
   if (x + dx < ballRadius) {
     dx = -dx;
-    score2 += 1;
+    socket.emit('setScore', { p1: score1, p2: score2 + 1 });
 
     x = canvasWidth / 2;
     y = canvasHeight - 30;
@@ -113,47 +136,33 @@ function draw() {
     dx = INITIAL_SPEED;
     dy = -INITIAL_SPEED;
 
-    paddleY = (canvasHeight - paddleWidth) / 2;
-    paddle2Y = (canvasHeight - paddleWidth) / 2;
+    socket.emit('moveP1', (canvasHeight - paddleWidth) / 2);
+    socket.emit('moveP2', (canvasHeight - paddleWidth) / 2);
   }
   if (y + dy < ballRadius || y + dy > canvasHeight - ballRadius) {
     dy = -dy;
   }
 
   if (downPressed) {
-    paddle2Y += 7;
+    const newP2Y = paddle2Y + 7;
+    socket.emit('moveP2', newP2Y);
   } else if (upPressed) {
-    paddle2Y -= 7;
+    const newP2Y = paddle2Y - 7;
+    socket.emit('moveP2', newP2Y);
   }
 
   if (sPressed) {
-    paddleY += 7;
+    const newP1Y = paddleY + 7;
+    socket.emit('moveP1', newP1Y);
   } else if (wPressed) {
-    paddleY -= 7;
+    const newP1Y = paddleY - 7;
+    socket.emit('moveP1', newP1Y);
   }
 
-  x += dx;
-  y += dy;
+  socket.emit('moveBall', { x: x + dx, y: y + dy });
 
   if (!isPaused) {
     requestAnimationFrame(draw);
-  }
-}
-
-function collisionHandler() {
-  if (x + dx < ballRadius + paddleHeight && y <= paddleY + paddleWidth && y >= paddleY) {
-    dx = -dx;
-  }
-
-  if (x + dx > canvasWidth - ballRadius - paddleHeight && y <= paddle2Y + paddleWidth && y >= paddle2Y) {
-    dx = -dx;
-  }
-}
-
-function mouseMoveHandler(e) {
-  const relativeX = e.clientX - canvas.offsetLeft;
-  if (relativeX > 0 && relativeX < canvasWidth) {
-    paddleX = relativeX - paddleWidth / 2;
   }
 }
 
@@ -172,10 +181,9 @@ function keyDownHandler(e) {
 
   if (e.keyCode === 32) {
     if (isPaused) {
-      isPaused = false;
-      requestAnimationFrame(draw);
+      socket.emit('unpause');
     } else {
-      isPaused = true;
+      socket.emit('pause');
     }
   }
 }
@@ -194,8 +202,35 @@ function keyUpHandler(e) {
   }
 }
 
+socket.on('moveP1', (newP1Y) => {
+  paddleY = newP1Y;
+});
+
+socket.on('moveP2', (newP2Y) => {
+  paddle2Y = newP2Y;
+});
+
+socket.on('pause', () => {
+  isPaused = true;
+});
+
+socket.on('unpause', () => {
+  isPaused = false;
+  requestAnimationFrame(draw);
+});
+
+socket.on('moveBall', ({ x: ballX, y: ballY }) => {
+  x = ballX;
+  y = ballY;
+});
+
+socket.on('setScore', ({ p1, p2 }) => {
+  console.log({ p1, p2 });
+  score1 = p1;
+  score2 = p2;
+});
+
 document.addEventListener('keydown', keyDownHandler, false);
 document.addEventListener('keyup', keyUpHandler, false);
-document.addEventListener('mousemove', mouseMoveHandler, false);
 
 draw();
