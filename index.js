@@ -8,6 +8,8 @@ const server = http.Server(app);
 const io = socketIO(server);
 
 let ballPos = {};
+let player1Pos = {};
+let player2Pos = {};
 
 app.set('port', 5000);
 app.use('/static', express.static(`${__dirname}/static`));
@@ -21,11 +23,13 @@ io.on('connection', (socket) => {
   socket.on('disconnect', () => {
     console.log('user disconnected');
   });
-  socket.on('moveP1', (newP1Y) => {
-    io.emit('moveP1', newP1Y);
+  socket.on('moveP1', ({ x, y }) => {
+    player1Pos = { x, y };
+    io.emit('moveP1', player1Pos);
   });
-  socket.on('moveP2', (newP2Y) => {
-    io.emit('moveP2', newP2Y);
+  socket.on('moveP2', ({ x, y }) => {
+    player2Pos = { x, y };
+    io.emit('moveP2', player2Pos);
   });
   socket.on('unpause', () => {
     io.emit('unpause');

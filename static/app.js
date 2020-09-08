@@ -1,234 +1,203 @@
-// eslint-disable-next-line no-undef, no-var
-var socket = io();
+let player;
+let player2;
+let ball;
+let cursors;
+let gameStarted = false;
+let scoreText;
+let server = 1;
+let player1Score = 0;
+let player2Score = 0;
 
-const canvas = document.getElementById('myCanvas');
-const ctx = canvas.getContext('2d');
+const rectangles = [];
 
-const canvasWidth = 640;
-const canvasHeight = 480;
+// This object contains all the Phaser configurations to load our game
+const config = {
+  type: Phaser.AUTO,
+  parent: 'game',
+  width: 640,
+  heigth: 800,
+  scale: {
+    mode: Phaser.Scale.RESIZE,
+    autoCenter: Phaser.Scale.CENTER_BOTH,
+  },
+  scene: {
+    preload,
+    create,
+    update,
+  },
+  physics: {
+    default: 'arcade',
+    arcade: {
+      gravity: false,
+      debug: true,
+    },
+  },
+};
 
-canvas.style.width = `${canvasWidth}px`;
-canvas.style.height = `${canvasHeight}px`;
+// Create the game instance
+// eslint-disable-next-line no-unused-vars
+const game = new Phaser.Game(config);
 
-const scale = window.devicePixelRatio;
-canvas.width = Math.floor(canvasWidth * scale);
-canvas.height = Math.floor(canvasHeight * scale);
-
-ctx.scale(scale, scale);
-
-let x = canvasWidth / 2;
-let y = canvasHeight - 30;
-
-const INITIAL_SPEED = 4;
-
-let dx = INITIAL_SPEED;
-let dy = -INITIAL_SPEED;
-
-const ballRadius = 10;
-
-const paddleHeight = 20;
-const paddleWidth = 80;
-let paddleY = (canvasHeight - paddleWidth) / 2;
-let paddle2Y = (canvasHeight - paddleWidth) / 2;
-
-let upPressed = false;
-let downPressed = false;
-let wPressed = false;
-let sPressed = false;
-
-let score1 = 0;
-let score2 = 0;
-
-let isPaused = true;
-
-function drawLine() {
-  ctx.beginPath();
-  ctx.setLineDash([10, 10]);
-  ctx.strokeStyle = '#FFF';
-  ctx.lineWidth = 4;
-  ctx.moveTo(canvasWidth / 2, 0);
-  ctx.lineTo(canvasWidth / 2, canvasHeight);
-  ctx.stroke();
+function preload() {
+  this.load.image('ball', 'static/assets/images/ball_32_32.png');
+  this.load.image('paddle', 'static/assets/images/paddle_128_32.png');
 }
 
-function drawBall() {
-  ctx.beginPath();
-  ctx.arc(x, y, ballRadius, 0, Math.PI * 2);
-  ctx.fillStyle = '#FFF';
-  ctx.fill();
-  ctx.closePath();
+function create() {
+  scoreText = this.add.text(
+    this.physics.world.bounds.width / 2,
+    this.physics.world.bounds.height / 2 - 72,
+    '0',
+    {
+      fontFamily: 'Monaco, Courier, monospace',
+      fontSize: '72px',
+      fill: '#fff',
+    },
+  );
+
+  scoreText.setOrigin(0.5);
+
+  scoreText2 = this.add.text(
+    this.physics.world.bounds.width / 2,
+    this.physics.world.bounds.height / 2 + 72,
+    '0',
+    {
+      fontFamily: 'Monaco, Courier, monospace',
+      fontSize: '72px',
+      fill: '#fff',
+    },
+  );
+
+  scoreText2.setOrigin(0.5);
+
+  const graphics = this.add.graphics();
+
+  player = this.physics.add.sprite(
+    320, // x position
+    760, // y position
+    'paddle', // key of image for the sprite
+  );
+
+  player2 = this.physics.add.sprite(
+    320, // x position
+    40, // y position
+    'paddle', // key of image for the sprite
+  );
+
+  const initialBallPos = server === 0 ? 720 : 80;
+
+  ball = this.physics.add.sprite(
+    400, // x position
+    initialBallPos, // y position
+    'ball', // key of image for the sprite
+  );
+
+  cursors = this.input.keyboard.createCursorKeys();
+
+  player.setCollideWorldBounds(true);
+  player2.setCollideWorldBounds(true);
+  ball.setCollideWorldBounds(true);
+
+  ball.setBounce(1, 1);
+
+  // this.physics.world.checkCollision.down = false;
+
+  player.setImmovable(true);
+  player2.setImmovable(true);
+
+  this.physics.add.collider(ball, player, hitPlayer, null, this);
+  this.physics.add.collider(ball, player2, hitPlayer, null, this);
+
+  for (let i = 0; i < 640; i += 25) {
+    rectangles.push(new Phaser.Geom.Rectangle(i, 400, 10, 6));
+  }
+
+  graphics.fillStyle(0xffffff, 1.0);
+
+  rectangles.forEach((rect) => {
+    graphics.fillRectShape(rect);
+  });
+
+  this.physics.world.checkCollision.down = false;
+
+  this.physics.world.checkCollision.up = false;
 }
 
-function drawPaddle1() {
-  ctx.beginPath();
-  ctx.rect(0, paddleY, paddleHeight, paddleWidth);
-  ctx.fillStyle = '#FFF';
-  ctx.fill();
-  ctx.closePath();
-}
-
-function drawPaddle2() {
-  ctx.beginPath();
-  ctx.rect(canvasWidth - paddleHeight, paddle2Y, paddleHeight, paddleWidth);
-  ctx.fillStyle = '#FFF';
-  ctx.fill();
-  ctx.closePath();
-}
-
-function drawScore() {
-  ctx.font = '72px Courier';
-  ctx.fillStyle = '#FFF';
-  ctx.textAlign = 'end';
-  ctx.fillText(score1, canvasWidth / 2 - 36, 80);
-  ctx.textAlign = 'start';
-  ctx.fillText(score2, canvasWidth / 2 + 36, 80);
-}
-
-function collisionHandler() {
-  if (
-    x + dx < ballRadius + paddleHeight
-    && y <= paddleY + paddleWidth
-    && y >= paddleY
-  ) {
-    dx = -dx;
+function update() {
+  if (player1Scored()) {
+    player1Score += 1;
+    scoreText.setText(player1Score);
+    ball.setX(player2.x);
+    ball.setY(80);
+    ball.setVelocityX(0);
+    ball.setVelocityY(0);
+    server = 1;
+    scoreText.setVisible(true);
+    scoreText2.setVisible(true);
+    gameStarted = false;
+  } else if (player2Scored(this.physics.world)) {
+    player2Score += 1;
+    scoreText2.setText(player2Score);
+    ball.setX(player.x);
+    ball.setY(720);
+    ball.setVelocityX(0);
+    ball.setVelocityY(0);
+    server = 0;
+    scoreText.setVisible(true);
+    scoreText2.setVisible(true);
+    gameStarted = false;
   }
 
-  if (
-    x + dx > canvasWidth - ballRadius - paddleHeight
-    && y <= paddle2Y + paddleWidth
-    && y >= paddle2Y
-  ) {
-    dx = -dx;
-  }
-}
+  // Put this in so that the player stays still if no key is being pressed
+  player.body.setVelocityX(0);
+  player2.body.setVelocityX(0);
 
-function draw() {
-  ctx.clearRect(0, 0, canvasWidth, canvasHeight);
-  drawLine();
-  drawBall();
-  drawPaddle1();
-  drawPaddle2();
-  drawScore();
-  collisionHandler();
-
-  if (x + dx > canvasWidth - ballRadius) {
-    dx = -dx;
-    socket.emit('setScore', { p1: score1 + 1, p2: score2 });
-
-    x = canvasWidth / 2;
-    y = canvasHeight - 30;
-
-    dx = INITIAL_SPEED;
-    dy = -INITIAL_SPEED;
-
-    socket.emit('moveP1', (canvasHeight - paddleWidth) / 2);
-    socket.emit('moveP2', (canvasHeight - paddleWidth) / 2);
-  }
-  if (x + dx < ballRadius) {
-    dx = -dx;
-    socket.emit('setScore', { p1: score1, p2: score2 + 1 });
-
-    x = canvasWidth / 2;
-    y = canvasHeight - 30;
-
-    dx = INITIAL_SPEED;
-    dy = -INITIAL_SPEED;
-
-    socket.emit('moveP1', (canvasHeight - paddleWidth) / 2);
-    socket.emit('moveP2', (canvasHeight - paddleWidth) / 2);
-  }
-  if (y + dy < ballRadius || y + dy > canvasHeight - ballRadius) {
-    dy = -dy;
+  if (cursors.left.isDown) {
+    player.body.setVelocityX(-350);
+    player2.body.setVelocityX(350);
+  } else if (cursors.right.isDown) {
+    player.body.setVelocityX(350);
+    player2.body.setVelocityX(-350);
   }
 
-  if (downPressed) {
-    const newP2Y = paddle2Y + 7;
-    socket.emit('moveP2', newP2Y);
-  } else if (upPressed) {
-    const newP2Y = paddle2Y - 7;
-    socket.emit('moveP2', newP2Y);
-  }
+  if (!gameStarted) {
+    ball.setX(server === 0 ? player.x : player2.x);
 
-  if (sPressed) {
-    const newP1Y = paddleY + 7;
-    socket.emit('moveP1', newP1Y);
-  } else if (wPressed) {
-    const newP1Y = paddleY - 7;
-    socket.emit('moveP1', newP1Y);
-  }
+    if (cursors.space.isDown) {
+      gameStarted = true;
 
-  socket.emit('moveBall', { x: x + dx, y: y + dy });
+      ball.setVelocityY(server === 0 ? -200 : 200);
 
-  if (!isPaused) {
-    requestAnimationFrame(draw);
-  }
-}
+      randNum = Math.random();
+      if (randNum >= 0.5) {
+        ball.setVelocityX(150);
+      } else {
+        ball.setVelocityX(-150);
+      }
 
-function keyDownHandler(e) {
-  if (e.key === 'Up' || e.key === 'ArrowUp') {
-    upPressed = true;
-  } else if (e.key === 'Down' || e.key === 'ArrowDown') {
-    downPressed = true;
-  }
-
-  if (e.keyCode === 87) {
-    wPressed = true;
-  } else if (e.keyCode === 83) {
-    sPressed = true;
-  }
-
-  if (e.keyCode === 32) {
-    if (isPaused) {
-      socket.emit('unpause');
-    } else {
-      socket.emit('pause');
+      scoreText.setVisible(false);
+      scoreText2.setVisible(false);
     }
   }
 }
 
-function keyUpHandler(e) {
-  if (e.keyCode === 87) {
-    wPressed = false;
-  } else if (e.keyCode === 83) {
-    sPressed = false;
-  }
+function hitPlayer(targetBall, targetPlayer) {
+  // Increase the velocity of the ball after it bounces
+  targetBall.setVelocityY(targetBall.body.velocity.y - 5);
 
-  if (e.key === 'Up' || e.key === 'ArrowUp') {
-    upPressed = false;
-  } else if (e.key === 'Down' || e.key === 'ArrowDown') {
-    downPressed = false;
+  const newXVelocity = Math.abs(targetBall.body.velocity.x) + 5;
+  // If the ball is to the left of the player, ensure the X-velocity is negative
+  if (targetBall.x < targetPlayer.x) {
+    targetBall.setVelocityX(-newXVelocity);
+  } else {
+    targetBall.setVelocityX(newXVelocity);
   }
 }
 
-socket.on('moveP1', (newP1Y) => {
-  paddleY = newP1Y;
-});
+function player1Scored() {
+  return ball.body.y < 0;
+}
 
-socket.on('moveP2', (newP2Y) => {
-  paddle2Y = newP2Y;
-});
-
-socket.on('pause', () => {
-  isPaused = true;
-});
-
-socket.on('unpause', () => {
-  isPaused = false;
-  requestAnimationFrame(draw);
-});
-
-socket.on('moveBall', ({ x: ballX, y: ballY }) => {
-  x = ballX;
-  y = ballY;
-});
-
-socket.on('setScore', ({ p1, p2 }) => {
-  console.log({ p1, p2 });
-  score1 = p1;
-  score2 = p2;
-});
-
-document.addEventListener('keydown', keyDownHandler, false);
-document.addEventListener('keyup', keyUpHandler, false);
-
-draw();
+function player2Scored(world) {
+  return ball.body.y > world.bounds.height;
+}
